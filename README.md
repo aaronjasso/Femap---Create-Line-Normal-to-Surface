@@ -34,3 +34,6 @@ You will see the following dialog box:
 **No** will simply skip all points that don't lie on the surface.
 
 **Cancel** will return you to the point selection dialog, where you can pick new points.
+
+### Output
+The program will create normal vectors according to the input you've provided. If any points are projected, the IDs of the new points will be listed to the message window. All new normal line IDs are also listed to the message window. All new entities are added to the active layer.
