@@ -22,7 +22,7 @@ The initial dialog box is shown below.
 
 **Cancel** turns off surface direction arrows and exits the program
 
-After clicking OK or Reverse, select a surface and then select a point.
+After clicking OK or Reverse, select a surface and then select any number of points.
 
 ### If any of the points do not lie on the surface
 You will see the following dialog box:
