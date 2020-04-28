@@ -17,7 +17,8 @@ Sub Main
     'You should have received a copy of the GNU General Public License
     'along with this program.  If not, see <https://www.gnu.org/licenses/>.
     '
-    'Version 1.0
+    'New in Version 2.0:
+	'-Added multi-point selection option to create normals at more than one point
 	'
 	'Written by AMJ, 4.28.2020
 	'====================================================
@@ -91,15 +92,16 @@ Sub Main
 	End If
 	iterSurf.Get(surfID)
 
-	'Get point
+	'Get points
 	lblGetPoint:
-	rc = pointSet.SelectID(FT_POINT,"Select point on surface for normal",pointID)
+	rc = pointSet.Select(FT_POINT,True,"Select point(s) for normal origins")
+	'rc = pointSet.SelectID(FT_POINT,"Select point on surface for normal",pointID)
 	If rc = FE_CANCEL Then
 		iterView.ColorMode(FVI_CURVE_ACCURACY) = 0
 		iterView.Put(viewID)
 		Exit All
 	End If
-	iterPoint.Get(pointID)
+	'iterPoint.Get(pointID)
 
 	'====================================================
 	'Check that point is on surface. If not, give option to attempt projection onto
@@ -111,41 +113,68 @@ Sub Main
 	'it will also be used to create the normal curve later.
 	layerID = App.Info_ActiveID(FT_LAYER)
 
-	rc = iterSurf.InsideXYZ(iterPoint.xyz)
+	Dim badPointSet As femap.Set
+	Set badPointSet = App.feSet
 
-	If rc = FE_FAIL Then
-		rc = MsgBox("Selected point does not lie on the surface. Would you like to attempt to project the point on to the surface?" & vbNewLine & vbNewLine & "(Click No to select a different point.",vbYesNoCancel,"Problem with Selected Point")
+	Dim badPoints As Long
+	badPoints = 0
+
+	pointSet.Reset
+
+	While pointSet.Next
+		iterPoint.Get(pointSet.CurrentID)
+		rc = iterSurf.InsideXYZ(iterPoint.xyz)
+		If rc = FE_FAIL Then
+			badPoints = badPoints + 1
+			badPointSet.Add(iterPoint.ID)
+		End If
+	Wend
+
+	If badPoints <>0 Then
+		rc = MsgBox(badPoints & " of the selected point(s) do not lie on the surface. Would you like to attempt to project them onto the surface?" & vbNewLine & vbNewLine & "(Click No to skip all points not on the surface, click Cancel to re-select points.",vbYesNoCancel,"Problem with Selected Points")
 	End If
 
 	Select Case rc
-	Case 6	'OK (NOTE: According to the documentation, OK should return "1", but it actually returns "6"
+	Case 6	'Yes
 		Dim projectedXYZ As Variant
-		rc = iterSurf.ProjectOnto(iterPoint.xyz,.00001,projectedXYZ)
-		If rc = FE_FAIL Then
-			MsgBox("Unable to project point selected point onto surface." & vbNewLine & vbNewLine & "Program terminating.",vbCritical,"Program Exit")
-			iterView.ColorMode(FVI_CURVE_ACCURACY) = 0
-			iterView.Put(viewID)
-			App.feViewRegenerate(viewID)
-			Exit All
-		Else
-			pointID = App.Info_NextID(FT_POINT)
-			iterPoint.xyz = projectedXYZ
-			iterPoint.layer = layerID
-			iterPoint.Put(pointID)
-			App.feAppMessage(FCM_NORMAL,"Created Point " & iterPoint.ID)
+
+		Dim brokenPointSet As femap.Set
+		Set brokenPointSet = App.feSet
+
+		badPointSet.Reset
+		While badPointSet.Next
+			iterPoint.Get(badPointSet.CurrentID)
+			rc = iterSurf.ProjectOnto(iterPoint.xyz,.00001,projectXYZ)
+			If rc = FE_FAIL Then
+				brokenPointSet.Add(iterPoint.ID)
+				pointSet.Remove(iterPoint.ID)
+			Else
+				pointID = App.Info_NextID(FT_POINT)
+				With iterPoint
+					.xyz = projectXYZ
+					.layer = layerID
+				End With
+				iterPoint.Put(pointID)
+				App.feAppMessage(FCM_NORMAL,"Created Point " & iterPoint.ID)
+				'App.feAppMessage(FCM_NORMAL,"Coords: " & iterPoint.x & ", " & iterPoint.y & ", " & iterPoint.z)
+				pointSet.Add(pointID)
+				pointSet.Remove(badPointSet.CurrentID)
+			End If
+		Wend
+
+		If brokenPointSet.Count > 0 Then
+			MsgBox(brokenPointSet.Count & " point(s) were unable to be projected onto selected surface and have been removed from the selection.", vbInformation,"Projection Results")
 		End If
-	Case 7	'No
+
+	Case 7	'No (Skip non-surface points)
+		pointSet.RemoveSet(badPointSet.ID)
+	Case 2	'Cancel (re-select points)
 		GoTo lblGetPoint
-	Case 2	'Cancel
-		iterView.ColorMode(FVI_CURVE_ACCURACY) = 0
-		iterView.Put(viewID)
-		App.feViewRegenerate(viewID)
-		Exit All
 	End Select
 
 
 	'====================================================
-	'Create normal vector
+	'Create normal vector(s)
 	'====================================================
 	Dim normPoint As femap.Point
 	Set normPoint = App.fePoint
@@ -153,11 +182,10 @@ Sub Main
 	Dim normXYZ As Variant
 	Dim sign As Long
 
-	rc = iterSurf.NormalAtXYZ(1,iterPoint.xyz,normXYZ)
-	'MsgBox("RC = " & rc,vbOkOnly,"Info")
+	Dim iterCurve As femap.Curve
+	Set iterCurve = App.feCurve
 
-	'NOTE: NormalAtXYZ outputs the unit normal vector OFFSETS from the origin point, NOT global coords.
-	'Normalize normal offsets to global coords.
+	Dim curveID As Long
 
 	If dlg.oppo = 0 Then
 		sign = 1
@@ -165,37 +193,38 @@ Sub Main
 		sign = -1
 	End If
 
-	normXYZ(0) = iterPoint.xyz(0) + (sign * normXYZ(0) * Val(dlg.length))
-	normXYZ(1) = iterPoint.xyz(1) + (sign * normXYZ(1) * Val(dlg.length))
-	normXYZ(2) = iterPoint.xyz(2) + (sign * normXYZ(2) * Val(dlg.length))
+	pointSet.Reset
+	While pointSet.Next
+		iterPoint.Get(pointSet.CurrentID)
+		iterSurf.NormalAtXYZ(1,iterPoint.xyz,normXYZ)
 
-	'Create point at normal vector end
-	With normPoint
-		.ID = App.Info_NextID(FT_POINT)
-		.layer = layerID
-		.xyz = normXYZ
-	End With
+		normXYZ(0) = iterPoint.xyz(0) + (sign * normXYZ(0) * Val(dlg.length))
+		normXYZ(1) = iterPoint.xyz(1) + (sign * normXYZ(1) * Val(dlg.length))
+		normXYZ(2) = iterPoint.xyz(2) + (sign * normXYZ(2) * Val(dlg.length))
 
-	normPoint.Put(0)
-	App.feAppMessage(FCM_NORMAL,"Created Point " & normPoint.ID)
+		'Create a point at the far end of the normal vector
+		With normPoint
+			.ID = App.Info_NextID(FT_POINT)
+			.layer = layerID
+			.xyz = normXYZ
+		End With
 
-	'Create line between points
-	Dim iterCurve As femap.Curve
-	Set iterCurve = App.feCurve
+		normPoint.Put(0)
+		App.feAppMessage(FCM_NORMAL,"Created Point " & normPoint.ID)
 
-	Dim curveID As Long
+		'Create line between points
+		curveID = App.Info_NextID(FT_CURVE)
+		With iterCurve
+			.type = FCU_LINE
+			.StdPoint(0) = iterPoint.ID
+			.StdPoint(1) = normPoint.ID
+			.layer = layerID
+		End With
 
-	curveID = App.Info_NextID(FT_CURVE)
+		iterCurve.Put(curveID)
+		App.feAppMessage(FCM_NORMAL,"Created Curve " & iterCurve.ID)
+	Wend
 
-	With iterCurve
-		.Type = FCU_LINE
-		.StdPoint(0) = iterPoint.ID
-		.StdPoint(1) = normPoint.ID
-		.layer = layerID
-	End With
-
-	iterCurve.Put(curveID)
-	App.feAppMessage(FCM_NORMAL,"Created Curve " & iterCurve.ID)
 
 	'====================================================
 	'Disable surface normals
