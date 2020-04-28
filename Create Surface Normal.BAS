@@ -99,6 +99,7 @@ Sub Main
 	If rc = FE_CANCEL Then
 		iterView.ColorMode(FVI_CURVE_ACCURACY) = 0
 		iterView.Put(viewID)
+		App.feViewRegenerate(viewID)
 		Exit All
 	End If
 	'iterPoint.Get(pointID)
