@@ -5,7 +5,7 @@ See also: [How to use Femap Scripts](https://github.com/aaronjasso/How_to_use_Fe
 
 ---
 ### Overview
-The program adds a feature that is missing but sorely needed in Femap: The ability to create a line normal to a surface. The program enables surface normal arrows so the user can choose which side of the surface to create the normal. A length can also be entered if the default length of 1 is not wanted. The user then selects a surface and a number of points, and the normal is created at each of the points.
+The program adds a feature that is missing but sorely needed in Femap: The ability to create a line normal to a surface at a user-defined point. The program enables surface normal arrows so the user can choose which side of the surface to create the normal. A length can also be entered if the default length of 1 is not wanted. The user then selects a surface and a number of points, and a normal is created at each of the points.
 
 ### Detailed Instructions
 The initial dialog box is shown below.
